@@ -1219,6 +1219,15 @@
         .lm-row.lm-child { padding-left:46px; }
         .lm-row.lm-child .lm-name { font-weight:600; font-size:0.92em; }
         .lm-row.lm-child .lm-name::before { content:"\21B3"; color:var(--muted); margin-right:8px; font-weight:700; }
+        /* Discipline expand/collapse chevron (UWorld-style) */
+        .disc-toggle, .disc-toggle-slot { width:22px; height:22px; flex:0 0 auto; box-sizing:border-box; }
+        .disc-toggle { display:flex; align-items:center; justify-content:center; cursor:pointer; border-radius:6px;
+            color:var(--muted); transition:background .12s ease, color .12s ease; }
+        .disc-toggle:hover { background:var(--hover-bg); color:var(--nbme-header-bot); }
+        .disc-toggle svg { width:12px; height:12px; display:block; transition:transform .18s ease; }
+        .disc-toggle.expanded svg { transform:rotate(90deg); }
+        .disc-children { padding-left:28px; }
+        .disc-children.collapsed { display:none; }
         .lm-row.lm-disabled { opacity:.45; cursor:not-allowed; }
         .lm-row.lm-disabled:hover { background:transparent; }
         .lm-actionbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:20px;
@@ -2705,7 +2714,68 @@ img.option-image:hover,
         function disciplineSelectedIds(sel){ const ids=new Set(); for(const k in DISCIPLINE_MAP){ const disc=DISCIPLINE_MAP[k], subs=DISCIPLINE_SUBCATS[disc]; if(subs){ const sc=SUBCAT_MAP[k]; if(sc && sel.has(subcatKey(disc,sc))) ids.add(parseInt(k,10)); } else if(sel.has(disc)) ids.add(parseInt(k,10)); } return ids; }
         function disciplineAllKeys(){ const counts=disciplineCounts(), scc=subcatCounts(), keys=[]; DISCIPLINE_DEFS.forEach(d=>{ const subs=DISCIPLINE_SUBCATS[d.name]; if(subs){ subs.forEach(sc=>{ const kk=subcatKey(d.name,sc); if((scc[kk]||0)>0) keys.push(kk); }); } else if((counts[d.name]||0)>0) keys.push(d.name); }); return keys; }
         function discRowEl(name, count, disabled, checked, indeterminate, isChild, onToggle){ const row=document.createElement('label'); row.className='lm-row'+(disabled?' lm-disabled':'')+(isChild?' lm-child':''); row.innerHTML='<input type="checkbox" class="lm-cb"'+(checked?' checked':'')+(disabled?' disabled':'')+'>'+'<span class="lm-name">'+name+'<span class="lm-sub">'+count+' Questions</span></span>'+'<span class="lm-count">'+count+'</span>'; const cb=row.querySelector('input'); if(indeterminate) cb.indeterminate=true; if(!disabled) cb.addEventListener('change', onToggle); return row; }
-        function buildDisciplineGrid(grid, sel, refresh){ grid.classList.add('disc-cols'); const counts=disciplineCounts(), scc=subcatCounts(); DISCIPLINE_DEFS.forEach(d=>{ const n=counts[d.name]||0; const subs=DISCIPLINE_SUBCATS[d.name]; const block=document.createElement('div'); block.className='disc-block'; if(subs){ const present=subs.filter(sc=>(scc[subcatKey(d.name,sc)]||0)>0); const childKeys=present.map(sc=>subcatKey(d.name,sc)); const allChecked=childKeys.length>0 && childKeys.every(kk=>sel.has(kk)); const someChecked=childKeys.some(kk=>sel.has(kk)); block.appendChild(discRowEl(d.name, n, n===0, allChecked, someChecked && !allChecked, false, ()=>{ if(allChecked) childKeys.forEach(kk=>sel.delete(kk)); else childKeys.forEach(kk=>sel.add(kk)); refresh(); })); present.forEach(sc=>{ const kk=subcatKey(d.name,sc), cn=scc[kk]||0; block.appendChild(discRowEl(sc, cn, false, sel.has(kk), false, true, ()=>{ if(sel.has(kk)) sel.delete(kk); else sel.add(kk); refresh(); })); }); } else { block.appendChild(discRowEl(d.name, n, n===0, sel.has(d.name), false, false, ()=>{ if(sel.has(d.name)) sel.delete(d.name); else sel.add(d.name); refresh(); })); } grid.appendChild(block); }); }
+        // Subcategory-bearing disciplines (Pathology, Behavioral Sciences) start COLLAPSED by default;
+        // expanding removes the name from the set and persists across re-renders.
+        const discCollapsed = new Set(Object.keys(DISCIPLINE_SUBCATS));
+        function makeDiscToggle(expanded, onToggle){
+            const t = document.createElement('span');
+            t.className = 'disc-toggle' + (expanded ? ' expanded' : '');
+            t.setAttribute('role', 'button');
+            t.setAttribute('tabindex', '0');
+            t.setAttribute('aria-label', expanded ? 'Collapse' : 'Expand');
+            t.innerHTML = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1 L7 5 L3 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            const fire = (e) => { e.preventDefault(); e.stopPropagation(); onToggle(t); };
+            t.addEventListener('click', fire);
+            t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') fire(e); });
+            return t;
+        }
+        function buildDisciplineGrid(grid, sel, refresh){
+            grid.classList.add('disc-cols');
+            const counts = disciplineCounts(), scc = subcatCounts();
+            DISCIPLINE_DEFS.forEach(d => {
+                const n = counts[d.name] || 0;
+                const subs = DISCIPLINE_SUBCATS[d.name];
+                const block = document.createElement('div'); block.className = 'disc-block';
+                if (subs) {
+                    const present = subs.filter(sc => (scc[subcatKey(d.name, sc)] || 0) > 0);
+                    const childKeys = present.map(sc => subcatKey(d.name, sc));
+                    const allChecked = childKeys.length > 0 && childKeys.every(kk => sel.has(kk));
+                    const someChecked = childKeys.some(kk => sel.has(kk));
+                    const parentRow = discRowEl(d.name, n, n === 0, allChecked, someChecked && !allChecked, false, () => {
+                        if (allChecked) childKeys.forEach(kk => sel.delete(kk));
+                        else childKeys.forEach(kk => sel.add(kk));
+                        refresh();
+                    });
+                    const expanded = !discCollapsed.has(d.name);
+                    const childrenWrap = document.createElement('div');
+                    childrenWrap.className = 'disc-children' + (expanded ? '' : ' collapsed');
+                    const toggle = makeDiscToggle(expanded, (t) => {
+                        const willExpand = discCollapsed.has(d.name); // currently collapsed -> expand
+                        if (willExpand) discCollapsed.delete(d.name); else discCollapsed.add(d.name);
+                        t.classList.toggle('expanded', willExpand);
+                        t.setAttribute('aria-label', willExpand ? 'Collapse' : 'Expand');
+                        childrenWrap.classList.toggle('collapsed', !willExpand);
+                    });
+                    parentRow.insertBefore(toggle, parentRow.firstChild);
+                    block.appendChild(parentRow);
+                    present.forEach(sc => {
+                        const kk = subcatKey(d.name, sc), cn = scc[kk] || 0;
+                        childrenWrap.appendChild(discRowEl(sc, cn, false, sel.has(kk), false, true, () => {
+                            if (sel.has(kk)) sel.delete(kk); else sel.add(kk); refresh();
+                        }));
+                    });
+                    block.appendChild(childrenWrap);
+                } else {
+                    const row = discRowEl(d.name, n, n === 0, sel.has(d.name), false, false, () => {
+                        if (sel.has(d.name)) sel.delete(d.name); else sel.add(d.name); refresh();
+                    });
+                    const slot = document.createElement('span'); slot.className = 'disc-toggle-slot';
+                    row.insertBefore(slot, row.firstChild);
+                    block.appendChild(row);
+                }
+                grid.appendChild(block);
+            });
+        }
 
         // Exam Sections (the "By Section" tab). Membership is by question-id range;
         // counts are computed live from the DB, so empty sections auto-disable.
