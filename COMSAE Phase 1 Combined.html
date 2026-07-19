@@ -2780,6 +2780,50 @@ img.option-image:hover,
         // Exam Sections (the "By Section" tab). Membership is by question-id range;
         // counts are computed live from the DB, so empty sections auto-disable.
         const SECTION_DEFS = [{"num": 8, "name": "Form 107", "start": 926, "end": 989}, {"num": 1, "name": "Form 110", "start": 1, "end": 176}, {"num": 2, "name": "Form 111", "start": 177, "end": 351}, {"num": 3, "name": "Form 113", "start": 352, "end": 525}, {"num": 4, "name": "Form 116", "start": 526, "end": 701}, {"num": 5, "name": "WelCOM ASC101", "start": 702, "end": 776}, {"num": 6, "name": "WelCOM ASC103", "start": 777, "end": 850}, {"num": 7, "name": "WelCOM ASC104", "start": 851, "end": 925}];
+        const FORM_SECTIONS = {"1": [{"name": "Section 1", "start": 1, "end": 44}, {"name": "Section 2", "start": 45, "end": 88}, {"name": "Section 3", "start": 89, "end": 132}, {"name": "Section 4", "start": 133, "end": 176}], "2": [{"name": "Section 1", "start": 177, "end": 220}, {"name": "Section 2", "start": 221, "end": 263}, {"name": "Section 3", "start": 264, "end": 307}, {"name": "Section 4", "start": 308, "end": 351}], "3": [{"name": "Section 1", "start": 352, "end": 395}, {"name": "Section 2", "start": 396, "end": 439}, {"name": "Section 3", "start": 440, "end": 482}, {"name": "Section 4", "start": 483, "end": 525}], "4": [{"name": "Section 1", "start": 526, "end": 569}, {"name": "Section 2", "start": 570, "end": 613}, {"name": "Section 3", "start": 614, "end": 657}, {"name": "Section 4", "start": 658, "end": 701}], "5": [{"name": "Section 1", "start": 702, "end": 726}, {"name": "Section 2", "start": 727, "end": 751}, {"name": "Section 3", "start": 752, "end": 776}], "6": [{"name": "Section 1", "start": 777, "end": 801}, {"name": "Section 2", "start": 802, "end": 826}, {"name": "Section 3", "start": 827, "end": 850}], "7": [{"name": "Section 1", "start": 851, "end": 875}, {"name": "Section 2", "start": 876, "end": 900}, {"name": "Section 3", "start": 901, "end": 925}], "8": [{"name": "Section 1", "start": 926, "end": 969}, {"name": "Section 2", "start": 970, "end": 989}]};
+        const blockCollapsed = new Set(SECTION_DEFS.map(f => String(f.num)));
+        function blockSectionKey(num, idx){ return "sec:" + num + ":" + idx; }
+        function blockSectionCount(s){ try { const r = currentDatabase.exec("SELECT COUNT(*) FROM Questions WHERE id BETWEEN " + s.start + " AND " + s.end); return (r.length && r[0].values.length) ? (parseInt(r[0].values[0][0]) || 0) : 0; } catch(e){ return 0; } }
+        function blockSelectedIds(sel){ const ids = new Set(); for (const k of sel){ let s = null; if (String(k).startsWith("sec:")){ const p = String(k).split(":"); s = (FORM_SECTIONS[p[1]] || [])[parseInt(p[2], 10)]; } else { s = SECTION_DEFS.find(x => String(x.num) === String(k)); } if (!s) continue; try { const r = currentDatabase.exec("SELECT id FROM Questions WHERE id BETWEEN " + s.start + " AND " + s.end); if (r.length) r[0].values.forEach(v => ids.add(v[0])); } catch(e){} } return ids; }
+        function blockAllKeys(){ const keys = []; SECTION_DEFS.forEach(f => { (FORM_SECTIONS[String(f.num)] || []).forEach((s, idx) => { if (blockSectionCount(s) > 0) keys.push(blockSectionKey(f.num, idx)); }); }); return keys; }
+        function buildBlockGrid(grid, sel, refresh){
+            grid.classList.add("disc-cols");
+            SECTION_DEFS.forEach(f => {
+                const subs = (FORM_SECTIONS[String(f.num)] || []).map((s, idx) => ({ name: s.name, start: s.start, end: s.end, key: blockSectionKey(f.num, idx), count: blockSectionCount(s) })).filter(s => s.count > 0);
+                const formCount = subs.reduce((a, s) => a + s.count, 0);
+                const blk = document.createElement("div"); blk.className = "disc-block";
+                if (subs.length > 1) {
+                    const childKeys = subs.map(s => s.key);
+                    const allChecked = childKeys.length > 0 && childKeys.every(kk => sel.has(kk));
+                    const someChecked = childKeys.some(kk => sel.has(kk));
+                    const parentRow = discRowEl(f.name, formCount, formCount === 0, allChecked, someChecked && !allChecked, false, () => {
+                        if (allChecked) childKeys.forEach(kk => sel.delete(kk)); else childKeys.forEach(kk => sel.add(kk)); refresh();
+                    });
+                    const expanded = !blockCollapsed.has(String(f.num));
+                    const childrenWrap = document.createElement("div"); childrenWrap.className = "disc-children" + (expanded ? "" : " collapsed");
+                    const toggle = makeDiscToggle(expanded, (t) => {
+                        const willExpand = blockCollapsed.has(String(f.num));
+                        if (willExpand) blockCollapsed.delete(String(f.num)); else blockCollapsed.add(String(f.num));
+                        t.classList.toggle("expanded", willExpand); t.setAttribute("aria-label", willExpand ? "Collapse" : "Expand");
+                        childrenWrap.classList.toggle("collapsed", !willExpand);
+                    });
+                    parentRow.insertBefore(toggle, parentRow.firstChild);
+                    blk.appendChild(parentRow);
+                    subs.forEach(s => { childrenWrap.appendChild(discRowEl(s.name, s.count, false, sel.has(s.key), false, true, () => {
+                        if (sel.has(s.key)) sel.delete(s.key); else sel.add(s.key); refresh();
+                    })); });
+                    blk.appendChild(childrenWrap);
+                } else {
+                    const only = subs[0]; const key = only ? only.key : String(f.num);
+                    const row = discRowEl(f.name, formCount, formCount === 0, sel.has(key), false, false, () => {
+                        if (sel.has(key)) sel.delete(key); else sel.add(key); refresh();
+                    });
+                    const slot = document.createElement("span"); slot.className = "disc-toggle-slot"; row.insertBefore(slot, row.firstChild);
+                    blk.appendChild(row);
+                }
+                grid.appendChild(blk);
+            });
+        }
 
         let lmView = 'discipline';
         let lmSel = { discipline: new Set(), block: new Set() };
@@ -2837,9 +2881,7 @@ img.option-image:hover,
                 buildDisciplineGrid(grid, lmSel.discipline, () => { lmRenderGrid(); lmUpdateBar(); });
             } else {
                 note.style.display = 'none';
-                lmBlocks.forEach(b => {
-                    grid.appendChild(lmRow('block', String(b.num), b.name, b.count + ' Questions', b.count, b.count === 0));
-                });
+                buildBlockGrid(grid, lmSel.block, () => { lmRenderGrid(); lmUpdateBar(); });
             }
         }
 
@@ -2865,17 +2907,7 @@ img.option-image:hover,
             if (lmView === 'discipline') {
                 disciplineSelectedIds(lmSel.discipline).forEach(v => ids.add(v));
             } else {
-                const sel = lmSel.block;
-                if (sel.size) {
-                    for (const k of sel) {
-                        const s = SECTION_DEFS.find(x => String(x.num) === String(k));
-                        if (!s) continue;
-                        try {
-                            const r = currentDatabase.exec("SELECT id FROM Questions WHERE id BETWEEN " + s.start + " AND " + s.end);
-                            if (r.length) r[0].values.forEach(v => ids.add(v[0]));
-                        } catch (e) {}
-                    }
-                }
+                blockSelectedIds(lmSel.block).forEach(v => ids.add(v));
             }
             return [...ids].sort((a, b) => a - b);
         }
@@ -2884,7 +2916,7 @@ img.option-image:hover,
             if (lmView === 'discipline') {
                 return disciplineAllKeys();
             }
-            return lmBlocks.filter(b => b.count > 0).map(b => String(b.num));
+            return blockAllKeys();
         }
 
         function lmUpdateBar() {
@@ -2954,9 +2986,7 @@ img.option-image:hover,
                 buildDisciplineGrid(grid, exSel.discipline, () => { exRenderGrid(); exUpdateBar(); });
             } else {
                 note.style.display = 'none';
-                lmBlocks.forEach(b => {
-                    grid.appendChild(exRow('block', String(b.num), b.name, b.count + ' Questions', b.count, b.count === 0));
-                });
+                buildBlockGrid(grid, exSel.block, () => { exRenderGrid(); exUpdateBar(); });
             }
         }
 
@@ -2982,17 +3012,7 @@ img.option-image:hover,
             if (exView === 'discipline') {
                 disciplineSelectedIds(exSel.discipline).forEach(v => ids.add(v));
             } else {
-                const sel = exSel.block;
-                if (sel.size) {
-                    for (const k of sel) {
-                        const s = SECTION_DEFS.find(x => String(x.num) === String(k));
-                        if (!s) continue;
-                        try {
-                            const r = currentDatabase.exec("SELECT id FROM Questions WHERE id BETWEEN " + s.start + " AND " + s.end);
-                            if (r.length) r[0].values.forEach(v => ids.add(v[0]));
-                        } catch (e) {}
-                    }
-                }
+                blockSelectedIds(exSel.block).forEach(v => ids.add(v));
             }
             return [...ids].sort((a, b) => a - b);
         }
@@ -3001,7 +3021,7 @@ img.option-image:hover,
             if (exView === 'discipline') {
                 return disciplineAllKeys();
             }
-            return lmBlocks.filter(b => b.count > 0).map(b => String(b.num));
+            return blockAllKeys();
         }
 
         function exUpdateBar() {
