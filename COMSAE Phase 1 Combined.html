@@ -2757,6 +2757,8 @@ img.option-image:hover,
                         childrenWrap.classList.toggle('collapsed', !willExpand);
                     });
                     parentRow.insertBefore(toggle, parentRow.firstChild);
+                    // Row click expands/collapses; only the checkbox itself selects (preventDefault stops the label from ticking the box).
+                    parentRow.addEventListener('click', (e) => { if (e.target.closest('.lm-cb') || e.target.closest('.disc-toggle')) return; e.preventDefault(); toggle.click(); });
                     block.appendChild(parentRow);
                     present.forEach(sc => {
                         const kk = subcatKey(d.name, sc), cn = scc[kk] || 0;
@@ -2808,6 +2810,7 @@ img.option-image:hover,
                         childrenWrap.classList.toggle("collapsed", !willExpand);
                     });
                     parentRow.insertBefore(toggle, parentRow.firstChild);
+                    parentRow.addEventListener("click", (e) => { if (e.target.closest(".lm-cb") || e.target.closest(".disc-toggle")) return; e.preventDefault(); toggle.click(); });
                     blk.appendChild(parentRow);
                     subs.forEach(s => { childrenWrap.appendChild(discRowEl(s.name, s.count, false, sel.has(s.key), false, true, () => {
                         if (sel.has(s.key)) sel.delete(s.key); else sel.add(s.key); refresh();
