@@ -2836,6 +2836,24 @@ img.option-image:hover,
 
         const COMBINED_FORM_LABELS = [{"start": 1, "end": 176, "label": "COMSAE 110"}, {"start": 177, "end": 351, "label": "COMSAE 111"}, {"start": 352, "end": 525, "label": "COMSAE 113"}, {"start": 526, "end": 701, "label": "COMSAE 116"}, {"start": 702, "end": 776, "label": "WelCOM ASC101"}, {"start": 777, "end": 850, "label": "WelCOM ASC103"}, {"start": 851, "end": 925, "label": "WelCOM ASC104"}, {"start": 926, "end": 1101, "label": "COMSAE 107"}];
         function combinedFormName(id){ for(const f of COMBINED_FORM_LABELS){ if(id>=f.start && id<=f.end) return f.label; } return "COMSAE Phase 1"; }
+        // Header name + which of this form's sections are in the current session
+        // ("COMSAE 107 Sections 1/2"). Derived from the live session ids, so it
+        // holds for section picks, discipline picks, and resumed sessions alike;
+        // full-form coverage shows no suffix. Phone swaps in the short span (CSS).
+        function combinedHeaderName(id){
+            const name = combinedFormName(id);
+            let fnum = null;
+            for (const k in FORM_SECTIONS){ if (FORM_SECTIONS[k].some(s => id >= s.start && id <= s.end)) { fnum = k; break; } }
+            if (!fnum) return name;
+            const secs = FORM_SECTIONS[fnum];
+            if (secs.length < 2) return name;
+            const present = [];
+            secs.forEach((s, i) => { if (currentQuestions.some(q => q.id >= s.start && q.id <= s.end)) present.push(String((/\d+/.exec(s.name) || [i + 1])[0])); });
+            if (!present.length || present.length === secs.length) return name;
+            const nums = present.join('/');
+            const long = (present.length === 1 ? 'Section ' : 'Sections ') + nums;
+            return name + ' <span class="ma-secs-long">' + long + '</span><span class="ma-secs-short">Sec. ' + nums + '</span>';
+        }
         function disciplineCounts() {
             const c = {};
             for (const k in DISCIPLINE_MAP) { const d = DISCIPLINE_MAP[k]; c[d] = (c[d]||0)+1; }
@@ -3379,7 +3397,7 @@ img.option-image:hover,
                     const idx = currentQuestionIndex + 1;
                     html = `
                     <div class="uw-header">
-                        <div class="uw-header-left"><div class="uw-header-left-name">${combinedFormName(qObj.id)}</div>
+                        <div class="uw-header-left"><div class="uw-header-left-name">${combinedHeaderName(qObj.id)}</div>
                             <div class="uw-header-left-title">Question</div>
                         </div>
                         <div class="uw-header-iteminfo">
@@ -3449,7 +3467,7 @@ img.option-image:hover,
                     const idx = currentQuestionIndex + 1;
                     html = `
                     <div class="uw-header">
-                        <div class="uw-header-left"><div class="uw-header-left-name">${combinedFormName(qObj.id)}</div>
+                        <div class="uw-header-left"><div class="uw-header-left-name">${combinedHeaderName(qObj.id)}</div>
                             <div class="uw-header-left-title">Question</div>
                         </div>
                         <div class="uw-header-iteminfo">
@@ -4617,6 +4635,17 @@ body.in-nbme-question:has(.nbme-skin.uw-skin.nbme-reverse) {
     margin-bottom: 3px; padding-bottom: 3px;
     border-bottom: 1px solid rgba(255,255,255,0.28);
 }
+</style>
+
+<!-- ma-header-sections (2026-07-21): the top-left name box also lists which of
+     the form's sections are in the current session ("COMSAE 107 Sections 1/2"),
+     built by combinedHeaderName() from the live session ids. Full-form
+     coverage shows no suffix. Phone (html.ma-phone) swaps the long word for
+     the short "Sec. 1/2" span. -->
+<style id="ma-header-sections">
+.ma-secs-short { display: none; }
+html.ma-phone .ma-secs-long { display: none; }
+html.ma-phone .ma-secs-short { display: inline; }
 </style>
 
 <!-- ma-narrow-rail (2026-07-08): question-number rail ~20% narrower (user
